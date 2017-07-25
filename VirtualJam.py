@@ -1,13 +1,7 @@
 #! /usr/bin/env python
-
-# Use pyaudio to open the microphone and run aubio.pitch on the stream of
-# incoming samples. If a filename is given as the first argument, it will
-# record 5 seconds of audio to this location. Otherwise, the script will
-# run until Ctrl+C is pressed.
-
-# Examples:
-#    $ ./python/demos/demo_pyaudio.py
-#    $ ./python/demos/demo_pyaudio.py /tmp/recording.wav
+""" VirtualJam is an interactive music generation tool
+thanks to aubio and mingus, and the examples posted on their sites
+"""
 
 import pyaudio
 import sys
@@ -18,6 +12,7 @@ import math
 from mingus.midi import fluidsynth
 from mingus.containers import Track, Bar, Note
 import mingus.core.keys as keys
+from mingus.core import chords
 import argparse
 
 _debug = 0
@@ -82,6 +77,16 @@ class SongPart(object):
         #update the track whenever the tones are modified:
         self._track = makeTrack(tones, self) # a SongPart suffices as a Context
         self.beats = max(tones, key=lambda e: e.getEndTime())
+        
+    def setBarProgresion(self, progression):
+        #TODO: fix this for compond meter
+        bpmx = self.meter[0]
+        b = 0 
+        for p in progression:
+            c = eval('chords.%s' % p)(self.key)
+            setChords(c, (b,b+bpmx))
+            b += bpmx
+        
     
     def noteAt(self, beat):
         """ returns the base melodic note at the beat in question """ 
@@ -104,22 +109,33 @@ class SongContext(object):
         self.current_section = None
         self.current_beat = 0.0
         self.parts = {} # part_ref: instance of SongPart
-        self.ClearArrangement()
+        self.clearArrangement()
                 
-    def AddPart(self, part_ref, part):
+    def addPart(self, part_ref, part):
         self.parts[part_ref] = part
     
-    def ClearArrangement(self):
+    def clearArrangement(self):
         self.arrangement = [] # array of sections (part_ref, part_type)
+        self.bars = []
         self.total_beats=0.0
+        self._track = Track()
+        
+    def _currentBar(self):
+        return int(self.current_beat / self.meter[1])
     
     def getCurrentBar(self):
-        return round(self.current_beat / self.meter[1])
+        return self._track.bars[_currentBar()]
     
-    def AppendArrangement(self, part_ref, part_type):
+    def getCurrentSection(self):
+        return self.arrangement[_currentBar()]
+    
+    def appendArrangement(self, part_ref, part_type):
         assert(part_type in _part_types and part_ref in self.parts)
-        self.arrangement.append((part_ref, part_type))
         self.total_beats += (len(self.parts[part_ref]) * self.meter[1])
+        for bar in self.parts[part_ref]._track.bars:
+            self._track.add_bar(bar)
+            self.arrangement.append((part_ref, part_type))
+        
     
     def nextNote(self):
         """ moves the current_beat to the next note in the song 
@@ -129,6 +145,24 @@ class SongContext(object):
         #TODO: find the next note in the current section, set the current_beat and return the note
         return None
 
+#
+# Player Class
+#
+
+class Player():
+    """ This is the base class for a music playing algorithm """
+    def __init__(self, context):
+        self._cx = context
+        
+    def play(self, startBeat, endBeat):
+        """ return a track from the given start to end"""
+        self._cx.current_beat = startBeat
+        t = Track()
+        #TODO: add notes
+        return t
+    
+    
+    
 #some helpful functions...
 
 # quantize rounds the time to the nearest quanta
@@ -278,8 +312,16 @@ if __name__ == '__main__':
         fluidsynth.play_Track( trk ) 
 
     if options.blues:
-        pass
-    
+        k = context.key
+        A = SongPart(48, key=k, meter=context.meter)
+        progression = ['I','IV','I','I','IV','IV','I','V','IV','I','I','V7']
+        A.setBarProgresion(progression)
+        context.addPart('A', A)
+        context.appendArrangement('A', 'verse')
+        p = Player(context)
+        trk = p.play(0, context.total_beats)
+        fluidsynth.play_Track( trk )
+        
     stream.stop_stream()
     stream.close()
     p.terminate()
