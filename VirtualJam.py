@@ -12,7 +12,7 @@ import math
 from mingus.midi import fluidsynth
 from mingus.containers import Track, Bar, Note
 import mingus.core.keys as keys
-from mingus.core import chords
+from mingus.core import chords, meter as mtr
 import argparse
 
 _debug = 0
@@ -79,8 +79,7 @@ class SongPart(object):
         self.beats = max(tones, key=lambda e: e.getEndTime())
         
     def setBarProgresion(self, progression):
-        #TODO: fix this for compond meter
-        bpmx = self.meter[0]
+        bpmx = getBPMX(self.meter)
         b = 0 
         for p in progression:
             c = eval('chords.%s' % p)(self.key)
@@ -105,7 +104,9 @@ class SongContext(object):
     def __init__(self, key='C', meter=(4,4)):
         """Set up a song context"""
         self.key = key
+        assert(mtr.is_valid(meter))
         self.meter = meter
+        self._bpmx = getBPMX(meter)
         self.current_section = None
         self.current_beat = 0.0
         self.parts = {} # part_ref: instance of SongPart
@@ -121,17 +122,26 @@ class SongContext(object):
         self._track = Track()
         
     def _currentBar(self):
-        return int(self.current_beat / self.meter[1])
+        return int(self.current_beat / self._bpmx)
     
     def getCurrentBar(self):
         return self._track.bars[_currentBar()]
     
+    def getBeatInBar(self):
+        return self.current_beat - self._currentBar() * self._bpmx
+    
     def getCurrentSection(self):
         return self.arrangement[_currentBar()]
     
+    def getCurrentKey(self):
+        return self.parts[self.getCurrentSection()[0]].key
+    
+    def getCurrentMeter(self):
+        return self.parts[self.getCurrentSection()[0]].meter
+    
     def appendArrangement(self, part_ref, part_type):
         assert(part_type in _part_types and part_ref in self.parts)
-        self.total_beats += (len(self.parts[part_ref]) * self.meter[1])
+        self.total_beats += (len(self.parts[part_ref]) * self._bpmx)
         for bar in self.parts[part_ref]._track.bars:
             self._track.add_bar(bar)
             self.arrangement.append((part_ref, part_type))
@@ -158,16 +168,55 @@ class Player():
         """ return a track from the given start to end"""
         self._cx.current_beat = startBeat
         t = Track()
+        context.current_beat = startBeat
+        cBar = context.getCurrentBar()
+        bar = Bar(context.getCurrentKey(), context.getCurrentMeter())
+        if context.getBeatInBar() > 0:
+            bar.place_rest(1.0 / context.getBeatInBar())
+            
         #TODO: add notes
+        for beat in range(startBeat, endBeat):
+            context.current_beat = beat
+            if context.getCurrentBar() != cBar:
+                t.add_bar(bar)
+                bar = Bar(context.getCurrentKey(), context.getCurrentMeter())
+        
+            
         return t
+
+#
+#
+#
+
+class BluesPlayer(Player):
+    """ picks blues licks to play that fit the context """
+    def play(self, startBeat, endBeat):
+        #TODO: implement this
+        return super(BluesPlayer, self).play(startBeat, endBeat)
     
-    
-    
+#
+# ReharmonizationPlayer class
+#
+
+class ReharmonizationPlayer(Player):
+    """ this player will reharmonize sections of a SongContext"""
+    def reharmonize(self, sectionRange):
+        """For the sections in sectionRange (e.g. [4,5,7]),
+           create alternate parts with substitute chords and 
+           replace the references in the arrangement to the alternates """
+        #TODO: implement this
+        pass
+
 #some helpful functions...
 
 # quantize rounds the time to the nearest quanta
 def quantize(t):
     return round(t / qSz ) * qSz
+
+def getBPMX(meter):
+    """ return the number of beats per measure given a meter""" 
+    #TODO: handle compond meters
+    return meter[0]
 
 # tick_metronome plays a short sound
 def tick_metronome():
@@ -181,7 +230,7 @@ def makeTrack(tones, cx):
     num_bars = 1 + math.floor(s_tones[-1].getEndTime() / cx.meter[0])
     for _ in range(int(num_bars)):
         t.add_bar(Bar(cx.key, cx.meter))
-    bpmx = cx.meter[0] # beats per measure 
+    bpmx = getBPMX(cx.meter) # beats per measure 
     tone_t = (0, 0.0)
     sBar = eBar = None
     #TODO: process note, beat, noteLen
