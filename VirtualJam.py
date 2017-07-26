@@ -10,7 +10,7 @@ import aubio
 import time
 import math
 from mingus.midi import fluidsynth
-from mingus.containers import Track, Bar, Note
+from mingus.containers import Track, Bar, Note, Composition
 import mingus.core.keys as keys
 from mingus.core import chords, meter as mtr
 import argparse
@@ -239,9 +239,10 @@ class ElementaryBassPlayer(Player):
             if bar.is_full():
                 t.add_bar(bar)
                 bar = Bar(context.getCurrentKey(), context.getCurrentMeter())
-        if not bar.is_full():
-           bar.place_rest(1.0 / (bar.length - bar.current_beat))
-        t.add_bar(bar)    
+        if bar.current_beat > 0.0001:
+            if not bar.is_full():
+                bar.place_rest(1.0 / (bar.length - bar.current_beat))
+            t.add_bar(bar)    
         return t
              
     
@@ -435,7 +436,12 @@ if __name__ == '__main__':
         basePlayer = Player(context)
         bassTrk = bassPlayer.play(0, int(context.total_beats))
         baseTrk = basePlayer.play(0, int(context.total_beats))
-        fluidsynth.play_Track( baseTrk )
+        #combine tracks
+        comp = Composition()
+        comp.add_track(bassTrk)
+        comp.add_track(baseTrk)
+        fluidsynth.play_Composition(comp)
+        
         
     stream.stop_stream()
     stream.close()
