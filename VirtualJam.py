@@ -56,7 +56,7 @@ class SongPart(object):
         self.key = key
         self.meter = meter
         self.beats = beats #integer number of beats in this part
-        tonic = chords.determine([keys.get_notes(key)[n] for n in [0,2,4]])[0]
+        tonic = chords.I(keys.get_notes(key)[0])
         self._chords = beats*[tonic]
         self._tones = []
         
@@ -69,24 +69,25 @@ class SongPart(object):
     # chordAt() 
     def chordAt(self, beat):
         """returns the chord at the beat in question """
-        return _chords[beat]
+        return self._chords[int(beat)]
      
     def setTones(self, tones):
         """ replaces the tones, recalculates the internal track and beats """
         self._tones = tones
         #update the track whenever the tones are modified:
         self._track = makeTrack(tones, self) # a SongPart suffices as a Context
-        self.beats = max(tones, key=lambda e: e.getEndTime())
+        self.beats = max([self.beats]+[t.getEndTime() for t in tones])
         
     def setBarProgresion(self, progression):
         bpmx = getBPMX(self.meter)
+        #self._chords = (bpmx * len(progression))*[None]
         b = 0 
         for p in progression:
             c = eval('chords.%s' % p)(self.key)
-            setChords(c, (b,b+bpmx))
+            self.setChords(c, range(b,b+bpmx))
             b += bpmx
+        self.beats = max([self.beats, b])
         
-    
     def noteAt(self, beat):
         """ returns the base melodic note at the beat in question """ 
         # TODO: this needs to be implemented 
@@ -116,22 +117,30 @@ class SongContext(object):
         self.parts[part_ref] = part
     
     def clearArrangement(self):
-        self.arrangement = [] # array of sections (part_ref, part_type)
+        self.arrangement = [] # array of sections (part_ref, part_type, beat_start)
         self.bars = []
         self.total_beats=0.0
         self._track = Track()
         
     def _currentBar(self):
+        #TODO: fix this if we ever want to change meter mid-song (no money)
         return int(self.current_beat / self._bpmx)
     
     def getCurrentBar(self):
-        return self._track.bars[_currentBar()]
+        return self._track.bars[self._currentBar()]
     
     def getBeatInBar(self):
         return self.current_beat - self._currentBar() * self._bpmx
     
     def getCurrentSection(self):
-        return self.arrangement[_currentBar()]
+        cb = self._currentBar()
+        return self.arrangement[self._currentBar()]
+    
+    def getCurrentPart(self):
+        return self.parts[self.getCurrentSection()[0]]
+    
+    def getCurrentChord(self):
+        return self.getCurrentPart().chordAt(self.current_beat - self.getCurrentSection()[2])
     
     def getCurrentKey(self):
         return self.parts[self.getCurrentSection()[0]].key
@@ -140,11 +149,12 @@ class SongContext(object):
         return self.parts[self.getCurrentSection()[0]].meter
     
     def appendArrangement(self, part_ref, part_type):
-        assert(part_type in _part_types and part_ref in self.parts)
-        self.total_beats += (len(self.parts[part_ref]) * self._bpmx)
+        assert(part_type in SongContext._part_types and part_ref in self.parts)
+        beat_start = self.total_beats
+        self.total_beats += self.parts[part_ref].beats
         for bar in self.parts[part_ref]._track.bars:
             self._track.add_bar(bar)
-            self.arrangement.append((part_ref, part_type))
+            self.arrangement.append((part_ref, part_type, beat_start))
         
     
     def nextNote(self):
@@ -165,27 +175,36 @@ class Player():
         self._cx = context
         
     def play(self, startBeat, endBeat):
-        """ return a track from the given start to end"""
+        """ return a track from the given start to end
+        this just plays the context's melody verbatim"""
         self._cx.current_beat = startBeat
         t = Track()
         context.current_beat = startBeat
         cBar = context.getCurrentBar()
         bar = Bar(context.getCurrentKey(), context.getCurrentMeter())
+        # place a rest at the start of the first bar in case we don't start on a bar boundary
         if context.getBeatInBar() > 0:
             bar.place_rest(1.0 / context.getBeatInBar())
             
-        #TODO: add notes
+        #add notes
         for beat in range(startBeat, endBeat):
             context.current_beat = beat
-            if context.getCurrentBar() != cBar:
+            cxBar = context.getCurrentBar()
+            #append the previous bar if we are on to a new one
+            if cxBar != cBar:
+                cBar = cxBar
                 t.add_bar(bar)
                 bar = Bar(context.getCurrentKey(), context.getCurrentMeter())
-        
-            
+            for s,d,n in filter(lambda x: x[0] <= context.getBeatInBar() 
+                        and x[0] >= bar.current_beat, cxBar):
+                bar.place_notes(n, d)
+        if not bar.is_full():
+           bar.place_rest(1.0 / (bar.length - bar.current_beat))
+        t.add_bar(bar)    
         return t
 
 #
-#
+# BluesPlayer class
 #
 
 class BluesPlayer(Player):
@@ -195,9 +214,41 @@ class BluesPlayer(Player):
         return super(BluesPlayer, self).play(startBeat, endBeat)
     
 #
-# ReharmonizationPlayer class
+#
 #
 
+class ElementaryBassPlayer(Player):
+    """plays quarter notes at the root of the chord"""
+    def play(self, startBeat, endBeat):
+        self._cx.current_beat = startBeat
+        t = Track()
+        context.current_beat = startBeat
+        cBar = context.getCurrentBar()
+        bar = Bar(context.getCurrentKey(), context.getCurrentMeter())
+        # place a rest at the start of the first bar in case we don't start on a bar boundary
+        if context.getBeatInBar() > 0:
+            bar.place_rest(1.0 / context.getBeatInBar())
+            
+        #add notes
+        for beat in range(startBeat, endBeat):
+            context.current_beat = beat
+            n = Note(context.getCurrentChord()[0])
+            n.change_octave(-2)
+            bar.place_notes(n, bar.meter[1])
+            # next bar?
+            if bar.is_full():
+                t.add_bar(bar)
+                bar = Bar(context.getCurrentKey(), context.getCurrentMeter())
+        if not bar.is_full():
+           bar.place_rest(1.0 / (bar.length - bar.current_beat))
+        t.add_bar(bar)    
+        return t
+             
+    
+#
+# ReharmonizationPlayer class
+#
+#TODO: should this inherit from player? Will it play?
 class ReharmonizationPlayer(Player):
     """ this player will reharmonize sections of a SongContext"""
     def reharmonize(self, sectionRange):
@@ -233,14 +284,11 @@ def makeTrack(tones, cx):
     bpmx = getBPMX(cx.meter) # beats per measure 
     tone_t = (0, 0.0)
     sBar = eBar = None
-    #TODO: process note, beat, noteLen
+    # process tones
     for tone in s_tones:
-        print "tone: %s" % tone
         sBar = int(tone.beatTime / bpmx) #starting bar for this tone
         eBar = int(tone.getEndTime() / bpmx) #ending bar for this tone
-        print "bars: %d %d" % (sBar, eBar )
         for bar in range(sBar, eBar+1):
-            print "bar: %d" % bar
             mNote = tone.asNote()
             if bar < eBar:
                 if mNote: mNote.dynamics['tie']= True #tie the note over to the next bar
@@ -361,14 +409,31 @@ if __name__ == '__main__':
         fluidsynth.play_Track( trk ) 
 
     if options.blues:
+        blueTones = [Tone(*x) for x in [(60,0,0.25),(64,0.25,0.25),(67,0.5,0.25),(72,0.75,0.25),
+                                        (75,1,0.25),(74,1.25,0.25),(72,1.5,0.25),(69,1.75,0.25),
+                                        (60,2,0.25),(64,2.25,0.25),(67,2.5,0.25),(72,2.75,0.25),
+                                        (70,3,0.25),(67,3.25,0.25),(64,3.5,0.25),(60,3.75,0.25),
+                                        (75,4,0.25),(74,4.25,0.25),(72,4.5,0.25),(69,4.75,0.25),
+                                        (75,5,0.25),(74,5.25,0.25),(72,5.5,0.25),(69,5.75,0.25),
+                                        (60,6,0.25),(64,6.25,0.25),(67,6.5,0.25),(72,6.75,0.25),
+                                        (60,7,0.25),(64,7.25,0.25),(67,7.5,0.25),(72,7.75,0.25),
+                                        (62,8,0.25),(67,8.25,0.25),(71,8.5,0.25),(74,8.75,0.25),
+                                        (75,9,0.25),(74,9.25,0.25),(72,9.5,0.25),(69,9.75,0.25),
+                                        (60,10,0.25),(64,10.25,0.25),(67,10.5,0.25),(72,10.75,0.25),
+                                        (62,11,0.25),(67,11.25,0.25),(71,11.5,0.25),(74,11.75,0.25)
+                                        ]]
         k = context.key
         A = SongPart(48, key=k, meter=context.meter)
-        progression = ['I','IV','I','I','IV','IV','I','V','IV','I','I','V7']
+        progression = ['I','IV7','I','I7','IV7','IV7','I','I','V7','IV7','I7','V7']
         A.setBarProgresion(progression)
+        A.setTones(blueTones)
+        print " A track", A._track
+        print " A beats", A.beats
         context.addPart('A', A)
         context.appendArrangement('A', 'verse')
-        p = Player(context)
-        trk = p.play(0, context.total_beats)
+        bassPlayer = ElementaryBassPlayer(context)
+        print "total beats: " ,int(context.total_beats)
+        trk = bassPlayer.play(0, int(context.total_beats))
         fluidsynth.play_Track( trk )
         
     stream.stop_stream()
