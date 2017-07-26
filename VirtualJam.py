@@ -40,6 +40,7 @@ class Tone(object):
         n = None
         if self.midiNote > 0:
             n = Note()
+            n.dynamics = {}
             n.from_int(int(self.midiNote))
         return n
     def __repr__(self):
@@ -133,7 +134,6 @@ class SongContext(object):
         return self.current_beat - self._currentBar() * self._bpmx
     
     def getCurrentSection(self):
-        cb = self._currentBar()
         return self.arrangement[self._currentBar()]
     
     def getCurrentPart(self):
@@ -276,27 +276,28 @@ def tick_metronome():
 # makeTrack
 # takes a list of Tones and a Context, and returns a mingus Track 
 def makeTrack(tones, cx):
-    t = Track()
-    s_tones = sorted(tones, key=lambda x: x.beatTime)
-    num_bars = 1 + math.floor(s_tones[-1].getEndTime() / cx.meter[0])
-    for _ in range(int(num_bars)):
-        t.add_bar(Bar(cx.key, cx.meter))
-    bpmx = getBPMX(cx.meter) # beats per measure 
-    tone_t = (0, 0.0)
+    t_track = Track()
+    #s_tones = sorted(tones, key=lambda x: x.beatTime)
+    last_time = max([t.getEndTime() for t in tones])
+    for _ in range(1 + int(last_time / cx.meter[0])):
+        t_track.add_bar(Bar(cx.key, cx.meter))
+    mpx = 1.0 / getBPMX(cx.meter) # measure portion of a beat as a float 
     sBar = eBar = None
     # process tones
-    for tone in s_tones:
-        sBar = int(tone.beatTime / bpmx) #starting bar for this tone
-        eBar = int(tone.getEndTime() / bpmx) #ending bar for this tone
-        for bar in range(sBar, eBar+1):
+    for tone in tones:
+        sBar = int(tone.beatTime * mpx) #starting bar for this tone
+        eBar = int(math.ceil(tone.getEndTime() * mpx)) #ending bar for this tone
+        for bar in range(sBar, eBar):
             mNote = tone.asNote()
-            if bar < eBar:
-                if mNote: mNote.dynamics['tie']= True #tie the note over to the next bar
-                mLen = t[bar].space_left()
+            if bar < (eBar - 1):
+                if mNote:
+                    mNote.dynamics['tie']= True #tie the note over to the next bar
+                mLen = t_track[bar].space_left()
             else:
-                mLen = tone.getEndTime() / bpmx - bar - t[bar].current_beat
-            if mLen > 0: t[bar].place_notes(mNote, 1.0/mLen)
-    return t
+                mLen = tone.getEndTime() * mpx - bar - t_track[bar].current_beat
+            if mLen > 0:
+                t_track[bar].place_notes(mNote, 1.0 / mLen)
+    return t_track
 
 # getToneStream
 # listens to the micropohone for notes being played
@@ -409,32 +410,32 @@ if __name__ == '__main__':
         fluidsynth.play_Track( trk ) 
 
     if options.blues:
-        blueTones = [Tone(*x) for x in [(60,0,0.25),(64,0.25,0.25),(67,0.5,0.25),(72,0.75,0.25),
-                                        (75,1,0.25),(74,1.25,0.25),(72,1.5,0.25),(69,1.75,0.25),
-                                        (60,2,0.25),(64,2.25,0.25),(67,2.5,0.25),(72,2.75,0.25),
-                                        (70,3,0.25),(67,3.25,0.25),(64,3.5,0.25),(60,3.75,0.25),
-                                        (75,4,0.25),(74,4.25,0.25),(72,4.5,0.25),(69,4.75,0.25),
-                                        (75,5,0.25),(74,5.25,0.25),(72,5.5,0.25),(69,5.75,0.25),
-                                        (60,6,0.25),(64,6.25,0.25),(67,6.5,0.25),(72,6.75,0.25),
-                                        (60,7,0.25),(64,7.25,0.25),(67,7.5,0.25),(72,7.75,0.25),
-                                        (62,8,0.25),(67,8.25,0.25),(71,8.5,0.25),(74,8.75,0.25),
-                                        (75,9,0.25),(74,9.25,0.25),(72,9.5,0.25),(69,9.75,0.25),
-                                        (60,10,0.25),(64,10.25,0.25),(67,10.5,0.25),(72,10.75,0.25),
-                                        (62,11,0.25),(67,11.25,0.25),(71,11.5,0.25),(74,11.75,0.25)
-                                        ]]
+        blueTones = [
+        Tone(*x) for x in [
+                (60, 0, 1), (64, 1, 1), (67, 2, 1), (72, 3, 2),
+                (75, 4, 0.5), (74, 5, 0.5), (72, 6, 1), (69, 7, 1), 
+                (60, 8, 1), (64, 9, 1), (67, 10, 1), (72, 11, 1), 
+                (70, 12, 1), (67, 13, 1), (64, 14, 1), (60, 15, 1), 
+                (75, 16, 1), (74, 17, 1), (72, 18, 1), (69, 19, 1), 
+                (75, 20, 1), (74, 21, 1), (72, 22, 1), (69, 23, 1), 
+                (60, 24, 1), (64, 25, 1), (67, 26, 1), (72, 27, 1), 
+                (60, 28, 1), (64, 29, 1), (67, 30, 1), (72, 31, 1), 
+                (62, 32, 1), (67, 33, 1), (71, 34, 1), (74, 35, 1), 
+                (75, 36, 1), (74, 37, 1), (72, 38, 1), (69, 39, 1), 
+                (60, 40, 1), (64, 41, 1), (67, 42, 1), (72, 43, 1), 
+                (62, 44, 1), (67, 45, 1), (71, 46, 1), (74, 47, 1)]]
         k = context.key
         A = SongPart(48, key=k, meter=context.meter)
         progression = ['I','IV7','I','I7','IV7','IV7','I','I','V7','IV7','I7','V7']
         A.setBarProgresion(progression)
         A.setTones(blueTones)
-        print " A track", A._track
-        print " A beats", A.beats
         context.addPart('A', A)
         context.appendArrangement('A', 'verse')
         bassPlayer = ElementaryBassPlayer(context)
-        print "total beats: " ,int(context.total_beats)
-        trk = bassPlayer.play(0, int(context.total_beats))
-        fluidsynth.play_Track( trk )
+        basePlayer = Player(context)
+        bassTrk = bassPlayer.play(0, int(context.total_beats))
+        baseTrk = basePlayer.play(0, int(context.total_beats))
+        fluidsynth.play_Track( baseTrk )
         
     stream.stop_stream()
     stream.close()
