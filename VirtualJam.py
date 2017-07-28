@@ -6,18 +6,20 @@ https://github.com/anzev/mingus/archive/master.zip
 
 """
 
-import pyaudio
-import sys
-import numpy as np
-import aubio
-import time
-import math
-from mingus.midi import fluidsynth
-from mingus.containers import Track, Bar, Note, Composition
-import mingus.core.keys as keys
-from mingus.core import chords, meter as mtr
-from mingus.midi.midi_file_out import write_Composition
 import argparse
+import aubio
+import math
+from mingus.containers import Track, Bar, Note, Composition
+from mingus.core import chords, meter as mtr
+from mingus.midi import fluidsynth
+from mingus.midi.midi_file_out import write_Composition
+import sys
+import time
+
+import mingus.core.keys as keys
+import numpy as np
+import pyaudio
+
 
 _debug = 0
 
@@ -95,9 +97,9 @@ class SongPart(object):
         
     def noteAt(self, beat):
         """ returns the base melodic note at the beat in question """ 
-        # TODO: this needs to be implemented 
-        pass
-
+        v_notes = filter(lambda x: x.beatTime <= beat and x.getEndTime() > beat, self._tones)
+        if v_notes:
+            return v_notes[0].as_note()
 #
 # SongContext class
 #  
@@ -128,45 +130,71 @@ class SongContext(object):
         self._track = Track()
         
     def _currentBar(self):
+        """_currentBar() for internal use, returns the index of the current bar"""
         #TODO: fix this if we ever want to change meter mid-song (no money)
         return int(self.current_beat / self._bpmx)
-    
+     
     def getCurrentBar(self):
+        """# getCurrentBar() returns the current Bar"""
         return self._track.bars[self._currentBar()]
     
     def getBeatInBar(self):
+        """returns the position in the current bar that the current_beat is in"""
         return self.current_beat - self._currentBar() * self._bpmx
     
     def getCurrentSection(self):
+        """returns the section (ref, type, start) the current_beat is in"""
         return self.arrangement[self._currentBar()]
     
     def getCurrentPart(self):
+        """returns the SongPart referenced in the current_beat"""
         return self.parts[self.getCurrentSection()[0]]
     
     def getCurrentChord(self):
+        """returns the Chord from SongPart at the current_beat"""
         return self.getCurrentPart().chordAt(self.current_beat - self.getCurrentSection()[2])
     
+    def getCurrentNote(self):
+        """returns the Note from SongPart at the current_beat"""
+        return self.getCurrentPart().noteAt(self.current_beat - self.getCurrentSection()[2])
+    
     def getCurrentKey(self):
-        return self.parts[self.getCurrentSection()[0]].key
+        """returns the key of the songPart at the current_beat """
+        return self.getCurrentPart().key
     
     def getCurrentMeter(self):
-        return self.parts[self.getCurrentSection()[0]].meter
+        """returns the meter of the songPart at the current_beat """
+        return self.getCurrentPart().meter
     
     def appendArrangement(self, part_ref, part_type):
+        """appends a reference to the part_ref of type part_type to the arrangement """
         assert(part_type in SongContext._part_types and part_ref in self.parts)
         beat_start = self.total_beats
         self.total_beats += self.parts[part_ref].beats
         for bar in self.parts[part_ref]._track.bars:
             self._track.add_bar(bar)
             self.arrangement.append((part_ref, part_type, beat_start))
-        
     
     def nextNote(self):
         """ moves the current_beat to the next note in the song 
         traverses to the next part if necessary. Returns None if there is
-        nothing left to play"""
-        #TODO: if there is nothing left in the current section, move to the next section 
-        #TODO: find the next note in the current section, set the current_beat and return the note
+        nothing to play"""
+        # return the current note, incrementing the current_beat to the start of the next note
+        while self.current_beat < self.total_beats:
+            cBar = self.getCurrentBar()
+            cNote = self.getCurrentNote()
+            cBiB = self.getBeatInBar()
+            nextNotes = [n[0] for n in cBar if n[0] > cBiB]
+            if nextNotes:
+                diff = min(nextNotes) - cBiB
+                self.current_beat += diff
+                return cNote
+            # if there are no more notes in the bar, move to the next bar
+            diff = cBar.length - cBiB
+            if diff <= 0: 
+                break
+            self.current_beat += diff
+        # return None if we are at the end.
         return None
 
 #
@@ -203,7 +231,7 @@ class Player():
                         and x[0] >= bar.current_beat, cxBar):
                 bar.place_notes(n, d)
         if not bar.is_full():
-           bar.place_rest(1.0 / (bar.length - bar.current_beat))
+            bar.place_rest(1.0 / (bar.length - bar.current_beat))
         t.add_bar(bar)    
         return t
 
@@ -227,7 +255,6 @@ class ElementaryBassPlayer(Player):
         self._cx.current_beat = startBeat
         t = Track()
         context.current_beat = startBeat
-        cBar = context.getCurrentBar()
         bar = Bar(context.getCurrentKey(), context.getCurrentMeter())
         # place a rest at the start of the first bar in case we don't start on a bar boundary
         if context.getBeatInBar() > 0:
@@ -313,7 +340,6 @@ def getToneStream(duration = -1, play_metronome=True):
     lastConf = MIN_CONF
     walog = 0.1
     tone = None
-    beatTime = -1
     currentBeat = 0
     starttime = time.time()
     while duration < 0 or currentBeat < duration: 
@@ -350,9 +376,9 @@ def getToneStream(duration = -1, play_metronome=True):
         tone.setEndTime(duration)
         yield(tone)
 
-def outputComposition(composition, file=None):
+def outputComposition(composition, outFile=None):
     if file:
-        write_Composition(file, composition)
+        write_Composition(outFile, composition)
     else:
         fluidsynth.play_Composition(composition)
         
@@ -414,7 +440,7 @@ if __name__ == '__main__':
 
     if options.echo:
         loop=[]
-        for n in getNoteStream(loop_size):
+        for n in getToneStream(loop_size):
             loop.append(n)
         trk = makeTrack(loop, context)
         print "Track:"
@@ -427,10 +453,10 @@ if __name__ == '__main__':
     if options.blues:
         blueTones = [
         Tone(*x) for x in [
-                (0, 0, 0.5), (64, 0.5, 1), (67, 1.5, 1), (72, 2.5, 2),
-                (75, 4.5, 1), (74, 5.5, 1), (72, 6.5, 1), (69, 7.5, 1), 
-                (60, 8.5, 1), (64, 9.5, 1), (67, 10.5, 1), (72, 11.5, 1), 
-                (70, 12.5, 1), (67, 13.5, 1), (64, 14.5, 1), (60, 15.5, .5), 
+                (64, 0, 1), (67, 1, 1), (72, 2, 2),
+                (75, 4, 1), (74, 5, 1), (72, 6, 1), (69, 7, 1), 
+                (60, 8, 1), (64, 9, 1), (67, 10, 1), (72, 11, 1), 
+                (70, 12, 1), (67, 13, 1), (64, 14, 1), (60, 15, 1), 
                 (75, 16, 1), (74, 17, 1), (72, 18, 1), (69, 19, 1), 
                 (75, 20, 1), (74, 21, 1), (72, 22, 1), (69, 23, 1), 
                 (60, 24, 1), (64, 25, 1), (67, 26, 1), (72, 27, 1), 
