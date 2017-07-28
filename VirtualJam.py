@@ -1,6 +1,9 @@
 #! /usr/bin/env python
 """ VirtualJam is an interactive music generation tool
 thanks to aubio and mingus, and the examples posted on their sites
+need to install 
+https://github.com/anzev/mingus/archive/master.zip
+
 """
 
 import pyaudio
@@ -13,6 +16,7 @@ from mingus.midi import fluidsynth
 from mingus.containers import Track, Bar, Note, Composition
 import mingus.core.keys as keys
 from mingus.core import chords, meter as mtr
+from mingus.midi.midi_file_out import write_Composition
 import argparse
 
 _debug = 0
@@ -346,6 +350,13 @@ def getToneStream(duration = -1, play_metronome=True):
         tone.setEndTime(duration)
         yield(tone)
 
+def outputComposition(composition, file=None):
+    if file:
+        write_Composition(file, composition)
+    else:
+        fluidsynth.play_Composition(composition)
+        
+
 # __main__
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Listen and respond to music.')
@@ -408,15 +419,18 @@ if __name__ == '__main__':
         trk = makeTrack(loop, context)
         print "Track:"
         print trk
-        fluidsynth.play_Track( trk ) 
+        
+        comp = Composition()
+        comp.add_track(trk)
+        outputComposition(comp, options.output) 
 
     if options.blues:
         blueTones = [
         Tone(*x) for x in [
-                (60, 0, 1), (64, 1, 1), (67, 2, 1), (72, 3, 2),
-                (75, 4, 0.5), (74, 5, 0.5), (72, 6, 1), (69, 7, 1), 
-                (60, 8, 1), (64, 9, 1), (67, 10, 1), (72, 11, 1), 
-                (70, 12, 1), (67, 13, 1), (64, 14, 1), (60, 15, 1), 
+                (0, 0, 0.5), (64, 0.5, 1), (67, 1.5, 1), (72, 2.5, 2),
+                (75, 4.5, 1), (74, 5.5, 1), (72, 6.5, 1), (69, 7.5, 1), 
+                (60, 8.5, 1), (64, 9.5, 1), (67, 10.5, 1), (72, 11.5, 1), 
+                (70, 12.5, 1), (67, 13.5, 1), (64, 14.5, 1), (60, 15.5, .5), 
                 (75, 16, 1), (74, 17, 1), (72, 18, 1), (69, 19, 1), 
                 (75, 20, 1), (74, 21, 1), (72, 22, 1), (69, 23, 1), 
                 (60, 24, 1), (64, 25, 1), (67, 26, 1), (72, 27, 1), 
@@ -440,7 +454,7 @@ if __name__ == '__main__':
         comp = Composition()
         comp.add_track(bassTrk)
         comp.add_track(baseTrk)
-        fluidsynth.play_Composition(comp)
+        outputComposition(comp, options.output)
         
         
     stream.stop_stream()
