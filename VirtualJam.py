@@ -5,11 +5,11 @@ need to install
 https://github.com/anzev/mingus/archive/master.zip
 
 """
-
+from Beatles import *
 import argparse
 import aubio
 import math
-from mingus.containers import Track, Bar, Note, Composition
+from mingus.containers import Track, Bar, Note, Composition, note
 from mingus.core import chords, meter as mtr
 from mingus.midi import fluidsynth
 from mingus.midi.midi_file_out import write_Composition
@@ -31,8 +31,16 @@ _debug = 0
 
 class Tone(object):
     """ has a midi note value (pitch), beat time, and duration """
-    def __init__(self, midiNote, beatTime, duration):
-        self.midiNote = midiNote
+    def __init__(self, note, beatTime, duration):
+        if isinstance (note, (int, float, long)):
+            self.midiNote = note
+        elif type(note) == str:
+            self.midiNote = int(Note(note))
+        elif hasattr(note, 'name'):
+            self.midiNote = int(note)
+        else:
+            raise Exception("Can't handle note object: '%s'" % note)
+        
         self.beatTime = beatTime
         self.duration = duration
     
@@ -76,6 +84,7 @@ class SongPart(object):
     # chordAt() 
     def chordAt(self, beat):
         """returns the chord at the beat in question """
+        print "chord at: %f" % beat
         return self._chords[int(beat)]
      
     def setTones(self, tones):
@@ -132,7 +141,9 @@ class SongContext(object):
     def _currentBar(self):
         """_currentBar() for internal use, returns the index of the current bar"""
         #TODO: fix this if we ever want to change meter mid-song (no money)
-        return int(self.current_beat / self._bpmx)
+        bbb = int(self.current_beat / self._bpmx)
+        print "_currentbar: %d beat %f" % (bbb, self.current_beat) 
+        return bbb
      
     def getCurrentBar(self):
         """# getCurrentBar() returns the current Bar"""
@@ -144,7 +155,9 @@ class SongContext(object):
     
     def getCurrentSection(self):
         """returns the section (ref, type, start) the current_beat is in"""
-        return self.arrangement[self._currentBar()]
+        sss = self.arrangement[self._currentBar()]
+        print 'currentSection: %s' % sss[0]
+        return sss
     
     def getCurrentPart(self):
         """returns the SongPart referenced in the current_beat"""
@@ -172,8 +185,9 @@ class SongContext(object):
         beat_start = self.total_beats
         self.total_beats += self.parts[part_ref].beats
         for bar in self.parts[part_ref]._track.bars:
-            self._track.add_bar(bar)
-            self.arrangement.append((part_ref, part_type, beat_start))
+            if bar: # skip empty bars
+                self._track.add_bar(bar)
+                self.arrangement.append((part_ref, part_type, beat_start))
     
     def nextNote(self):
         """ moves the current_beat to the next note in the song 
@@ -398,6 +412,8 @@ if __name__ == '__main__':
                         help='Quanta per minute; determines how finely to quantize. (default: %(default)s)')
     parser.add_argument('--blues','-z', action='store_true', default=False,
                         help='Play some blues. (default: %(default)s)')
+    parser.add_argument('--beatles','-a', action='store_true', default=False,
+                        help='Beatles medley. (default: %(default)s)')
     parser.add_argument('--output', default=None,
                         help='Output file for results. (default: %(default)s)')
     parser.add_argument('--debug', action='store_true')
@@ -481,7 +497,38 @@ if __name__ == '__main__':
         comp.add_track(bassTrk)
         comp.add_track(baseTrk)
         outputComposition(comp, options.output)
-        
+
+    if options.beatles:
+        ElanorTones = [ Tone(*x) for x in ElanorNotes]
+        JudeTones = [ Tone(*x) for x in JudeNotes]
+        A = SongPart(36, key='F', meter=(4,4))
+        A._chords = []
+        for c, l in JudeChords:
+            A._chords += l*[chords.from_shorthand(c)]
+        A.setTones(JudeTones)
+        print A._track.bars
+        context.addPart('A', A)
+        context.appendArrangement('A', 'verse')
+        B = SongPart(16, key='F', meter=(4,4))
+        #TODO: stitch the songs
+        #context.addPart('B', B)
+        #context.appendArrangement('B', 'bridge')
+        C = SongPart(40, key='e', meter=(4,4))
+        C._chords = []
+        for c, l in ElanorChords:
+            C._chords += l*[chords.from_shorthand(c)]
+        C.setTones(ElanorTones)
+        context.addPart('C', C)
+        context.appendArrangement('C', 'verse')
+        bassPlayer = ElementaryBassPlayer(context)
+        basePlayer = Player(context)
+        bassTrk = bassPlayer.play(0, int(context.total_beats))
+        baseTrk = basePlayer.play(0, int(context.total_beats))
+        #combine tracks
+        comp = Composition()
+        comp.add_track(bassTrk)
+        comp.add_track(baseTrk)
+        outputComposition(comp, options.output)
         
     stream.stop_stream()
     stream.close()
