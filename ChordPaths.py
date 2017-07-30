@@ -1,4 +1,4 @@
-from mingus.core import intervals, chords, notes
+from mingus.core import intervals, chords, notes, keys, scales
 from transitions import chord_transitions
 from operator import itemgetter
 
@@ -40,21 +40,51 @@ def find_chord_paths(start, target, depth):
 # adds a 7th if necessary
 #
 
-def interpret(chord, key):
+def interpret(chord, key, allow_target=False):
     ch = chord
+    # chord has to be a non-inverted, non-polychord
     shorthand = chords.determine(ch, True, True, True)
-    if len(shorthand) == 0:
+    if len(shorthand) == 0: 
         raise Exception("Can't interpret chord %s in key %s" % (chord, key))
-    shorthand = shorthand[0]
-    if shorthand[len(chord[0]):] in chord_transitions:
+    shorthand = shorthand[0] #get the most common representation
+    #look for the chord type in chord_transitions 
+    if (shorthand[len(chord[0]):] in chord_transitions) or ((shorthand[len(chord[0]):] in ['m', 'M']) and allow_target):
         return (notes.note_to_int(chord[0]), shorthand[len(chord[0]):])
+    #compute the seventh in this key
     seventh = intervals.interval(key, chord[0], 6)
+    #make the seventh chord
     if not seventh in chord:
         ch += [seventh]
+    #do it all over again
     shorthand = chords.determine(ch, True, True, True)
     if len(shorthand) == 0:
         raise Exception("Can't interpret chord %s in key %s" % (chord, key))
     shorthand = shorthand[0]
+    #all the 7ths are in chord_transitions
     return (notes.note_to_int(chord[0]), shorthand[len(chord[0]):])
+#
+# split() splits a size into nice power-of-two intervals
+#
     
+def part_split(size, n):
+    ch = 2 ** (int.bit_length(size)-1)
+    cn = n / 2
+    if n == 1: return [size]
+    if ch == size: ch = ch / 2
+    return part_split(ch, cn) + part_split(size-ch, n-cn)
+
+def determineScales(notes):
+    notes = set(notes)
+    res = []
+    for key in keys.keys:
+        for scale in scales._Scale.__subclasses__():
+            if scale.type == 'major':
+                if (notes <= set(scale(key[0]).ascending()) or
+                        notes <= set(scale(key[0]).descending())):
+                    res.append(scale(key[0]))
+            elif scale.type == 'minor':
+                if (notes <= set(scale(keys.get_notes(key[1])[0]).ascending()) or
+                        notes <= set(scale(keys.get_notes(key[1])[0]).descending())):
+                    res.append(scale(keys.get_notes(key[1])[0]))
+    return res
     
