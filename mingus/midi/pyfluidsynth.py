@@ -27,9 +27,10 @@ soundcard yourself.
 FluidSynth works on all major platforms, so pyFluidSynth should also.
 """
 
-import time
 from ctypes import *
 from ctypes.util import find_library
+import time
+
 
 lib = find_library('fluidsynth') or find_library('libfluidsynth')\
      or find_library('libfluidsynth-1')

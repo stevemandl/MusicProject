@@ -22,10 +22,12 @@
 This module provides a simple interface for dealing with keys.
 """
 
+from itertools import cycle, islice
+import operator
+
 from mt_exceptions import FormatError, NoteFormatError, RangeError
 import notes
-import operator
-from itertools import cycle, islice
+
 
 keys = [
         ('Cb', 'ab'), #  7 b

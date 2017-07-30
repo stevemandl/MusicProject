@@ -19,9 +19,11 @@
 
 """Functions to convert mingus.containers to pretty ASCII tablature."""
 
-import mingus.extra.tunings as tunings
 from mingus.core.mt_exceptions import RangeError, FingerError
 import os
+
+import mingus.extra.tunings as tunings
+
 
 default_tuning = tunings.get_tuning('Guitar', 'Standard', 6, 1)
 

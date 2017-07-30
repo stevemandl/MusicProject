@@ -53,9 +53,10 @@ Other scales
 """
 
 import intervals
-from notes import augment, diminish, reduce_accidentals
 from keys import keys, get_notes
 from mt_exceptions import NoteFormatError, FormatError, RangeError
+from notes import augment, diminish, reduce_accidentals
+
 
 def determine(notes):
     """Determine the scales containing the notes.

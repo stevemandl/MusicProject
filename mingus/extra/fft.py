@@ -23,12 +23,13 @@
 This module can also convert the found frequencies to Note objects.
 """
 
-import wave
-import struct
-import numpy
 from mingus.containers.note import Note
+import numpy
 from numpy.fft import fft as _fft
 import operator
+import struct
+import wave
+
 
 # Making a frequency-amplitude table   Adapted some ideas and source from:
 # http://xoomer.virgilio.it/sam_psy/psych/sound_proc/sound_proc_python.html
@@ -36,7 +37,6 @@ import operator
 # The log function turns out to be really, really slow, which adds up quickly.
 # So before we do any performance critical calculations we set up a cache of all
 # the frequencies we need to look up.
-
 _log_cache = []
 for x in xrange(129):
     _log_cache.append(Note().from_int(x).to_hertz())

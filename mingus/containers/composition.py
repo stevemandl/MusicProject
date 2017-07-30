@@ -19,6 +19,7 @@
 
 from mt_exceptions import UnexpectedObjectError
 
+
 class Composition(object):
 
     """A composition object.

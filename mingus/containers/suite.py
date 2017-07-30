@@ -19,6 +19,7 @@
 
 from mt_exceptions import UnexpectedObjectError
 
+
 class Suite(object):
 
     """A suite object.

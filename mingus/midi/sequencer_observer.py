@@ -28,6 +28,7 @@ you need to see.
 
 from mingus.midi.sequencer import Sequencer
 
+
 class SequencerObserver(object):
 
     """An easy to extend base class that can be used to observe a Sequencer.

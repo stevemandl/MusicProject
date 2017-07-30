@@ -20,8 +20,10 @@
 """Functions that can generate MIDI files from the objects in
 mingus.containers."""
 
-from midi_track import MidiTrack
 from binascii import a2b_hex
+
+from midi_track import MidiTrack
+
 
 class MidiFile(object):
 

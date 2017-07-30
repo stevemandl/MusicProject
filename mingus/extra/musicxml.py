@@ -30,15 +30,16 @@ and is supported by over 100 applications.
 http://www.musicxml.org/xml.html
 """
 
+import datetime
+from mingus.containers.composition import Composition
+from mingus.containers.instrument import MidiInstrument
+from mingus.containers.track import Track
+from mingus.core import notes
+from mingus.core import value
+from mingus.core.keys import major_keys, minor_keys
 import xml
 from xml.dom.minidom import Document
-from mingus.core import notes
-from mingus.core.keys import major_keys, minor_keys
-from mingus.containers.instrument import MidiInstrument
-from mingus.containers.composition import Composition
-from mingus.containers.track import Track
-from mingus.core import value
-import datetime
+
 
 def _gcd(a=None, b=None, terms=None):
     """Return greatest common divisor using Euclid's Algorithm."""

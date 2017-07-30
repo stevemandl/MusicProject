@@ -30,6 +30,7 @@ attached to the Sequencer.
 
 from mingus.containers.instrument import MidiInstrument
 
+
 class Sequencer(object):
 
     """A general purpose sequencer for the objects in mingus.containers.

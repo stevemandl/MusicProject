@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+*.pyc
+
+# Editor backups
+*~
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+#SoundFonts
+*.sf2
+
+#eclipse stuff
+.settings/
+.project
+.pydevproject
+

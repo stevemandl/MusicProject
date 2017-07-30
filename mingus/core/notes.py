@@ -28,6 +28,7 @@ enables simple calculations.
 
 from mt_exceptions import NoteFormatError, RangeError, FormatError
 
+
 _note_dict = {
     'C': 0,
     'D': 2,

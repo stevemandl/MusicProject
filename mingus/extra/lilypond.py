@@ -23,13 +23,14 @@ This allows you to create sheet music from some of the objects in
 mingus.containers.
 """
 from mingus.containers import Note
-
-from mingus.core.keys import Key
 from mingus.containers.mt_exceptions import (NoteFormatError,
-        UnexpectedObjectError)
-import mingus.core.value as value
+                                             UnexpectedObjectError)
+from mingus.core.keys import Key
 import os
 import subprocess
+
+import mingus.core.value as value
+
 
 def from_Note(note, process_octaves=True, standalone=True):
     """Get a Note object and return the LilyPond equivalent in a string.

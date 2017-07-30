@@ -18,7 +18,9 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from mingus.containers.note import Note
+
 from mt_exceptions import UnexpectedObjectError
+
 
 class Instrument(object):
 

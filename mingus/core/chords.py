@@ -97,9 +97,10 @@ from_shorthand (a lot) and their inversions.
 """
 
 import intervals
-import notes
 import keys
 from mt_exceptions import NoteFormatError, FormatError
+import notes
+
 
 _triads_cache = {}
 

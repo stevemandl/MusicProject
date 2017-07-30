@@ -17,10 +17,12 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from mt_exceptions import InstrumentRangeError
-from mingus.containers.note_container import NoteContainer
 from mingus.containers.bar import Bar
+from mingus.containers.note_container import NoteContainer
+
 import mingus.core.value as value
+from mt_exceptions import InstrumentRangeError
+
 
 class Track(object):
 

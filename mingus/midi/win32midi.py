@@ -9,12 +9,12 @@
 # Remember to call .closeDevice() when done.
 
 
+from ctypes import windll, c_buffer, c_void_p, c_int, byref
+import exceptions
 import sys
+import time
 if sys.platform != 'win32':
     raise RuntimeError('Intended for use on win32 platform')
-import time
-import exceptions
-from ctypes import windll, c_buffer, c_void_p, c_int, byref
 
 class Win32MidiException(exceptions.Exception): pass
 

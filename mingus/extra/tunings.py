@@ -23,7 +23,9 @@ you search through them."""
 from mingus.containers.note import Note
 from mingus.containers.note_container import NoteContainer
 from mingus.core.mt_exceptions import RangeError
+
 import mingus.core.notes as notes
+
 
 class StringTuning(object):
 

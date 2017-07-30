@@ -513,7 +513,7 @@ if __name__ == '__main__':
         #TODO: stitch the songs
         #context.addPart('B', B)
         #context.appendArrangement('B', 'bridge')
-        C = SongPart(40, key='e', meter=(4,4))
+        C = SongPart(40, key='D', meter=(4,4))
         C._chords = []
         for c, l in ElanorChords:
             C._chords += l*[chords.from_shorthand(c)]
