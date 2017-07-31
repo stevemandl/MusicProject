@@ -72,19 +72,23 @@ def part_split(size, n):
     if n == 1: return [size]
     if ch == size: ch = ch / 2
     return part_split(ch, cn) + part_split(size-ch, n-cn)
+#the default scale types to consider when determining scales
+default_scales = [
+    scales.Major, scales.NaturalMinor, scales.MelodicMinor, 
+    scales.HarmonicMajor, scales.HarmonicMinor, scales.WholeTone, 
+    scales.Octatonic, scales.Chromatic]
 
-def determineScales(notes):
+def determineScale(notes, scale_types = default_scales):
     notes = set(notes)
-    res = []
     for key in keys.keys:
-        for scale in scales._Scale.__subclasses__():
+        
+        for scale in scale_types:
             if scale.type == 'major':
                 if (notes <= set(scale(key[0]).ascending()) or
                         notes <= set(scale(key[0]).descending())):
-                    res.append(scale(key[0]))
+                    return scale(key[0])
             elif scale.type == 'minor':
                 if (notes <= set(scale(keys.get_notes(key[1])[0]).ascending()) or
                         notes <= set(scale(keys.get_notes(key[1])[0]).descending())):
-                    res.append(scale(keys.get_notes(key[1])[0]))
-    return res
+                    return scale(keys.get_notes(key[1])[0])
     

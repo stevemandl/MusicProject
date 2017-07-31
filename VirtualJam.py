@@ -18,7 +18,7 @@ from mingus.midi import fluidsynth
 from mingus.midi.midi_file_out import write_Composition
 import sys
 import time
-
+import random
 import mingus.core.keys as keys
 import numpy as np
 import pyaudio
@@ -315,20 +315,60 @@ class WalkingBassPlayer(Player):
         t = Track()
         bar = self._bar()
         bass_range = range(16,43) 
-        # place a rest at the start of the first bar in case we don't start on a bar boundary
-        if self._bib() > 0:
-            self._cx.current_beat += self._cBar().space_left * bar.meter[1]
-            bar.place_rest(1.0 / bar.length)
-            t.add_bar(bar)
-            bar = self._bar()
         chordSieve = Sieve(bass_range)
-        scaleSieve = Sieve(bass_range)
-            
+        walk_direction = 3
+        if coin(): walk_direction = -3
+        last_chord = self._cx.getCurrentChord()
+        chordSieve.overlay(bass_range, last_chord[:1]) #only roots
+        walk_note = chordSieve.attune(Note('D-2'))
+        last_note = chordSieve.attune(Note('D-2'))
+        last_goal = (startBeat, walk_note)
+        nearby_notes = [last_goal]
+        
+        # add goal Notes at the start of each chord change
+        while self._cx.current_beat < endBeat:
+            if self._cx.getCurrentChord()[0] != last_chord[0] or self._cx.current_beat == endBeat-1:
+                chordSieve.overlay(bass_range, self._cx.getCurrentChord()[:1])
+                dt = self._cx.current_beat - last_goal[0]
+                new_range = [n for n in bass_range if n >= (int(last_goal[1]) - dt * 5) and n < (int(last_goal[1]) + dt * 5 ) ]
+                new_goal = (self._cx.current_beat, chordSieve.attune(random.choice(new_range)))
+                _log.debug("WalkingBass goal diff %d", int(new_goal[1]) - int(last_goal[1]) )
+                for n in range(dt):
+                    if n == 0: #first note when chord changed
+                        nearby_notes.append(last_goal) #land on goal note when chord changes
+                        walk_note = last_goal[1]
+                        continue
+                    # constrain wal direction so we don't get out of range or too far from goal
+                    if walk_direction >= 0 and (walk_note > 42 or coin(1. / (43 - int(walk_note)))):
+                        walk_direction = -2 
+                    if walk_direction <= 0 and (walk_note < 17 or coin(1. / (int(walk_note) - 16))):
+                        walk_direction = 2 
+                    if int(walk_note) - int(new_goal[1]) > (dt-n) * 4: walk_direction = -5
+                    if int(new_goal[1]) - int(walk_note) > (dt-n) * 4: walk_direction = 5
+                    #overlay a scale  
+                    chordSieve.overlay(bass_range, determineScale(last_chord))
+                    walk_note = int(walk_note) + walk_direction    
+                    walk_note = chordSieve.attune(walk_note, walk_direction > 0)
+                    if not n % 2: #even notes sieve with chord
+                        chordSieve.overlay(bass_range, last_chord)
+                        walk_note = chordSieve.attune(walk_note, walk_direction > 0)
+                    #TODO: add rhythm filter e.g. append only if beat_in_bar in rhythm_beats
+                    if last_note != walk_note:
+                        nearby_notes.append((last_goal[0] + n, walk_note))
+                    else:
+                        nearby_notes.append((last_goal[0] + n, 0))
+                    last_note = walk_note
+                last_goal = new_goal
+            last_chord = self._cx.getCurrentChord()
+            self._cx.current_beat += 1
+        
         #add notes
-        for beat in range(startBeat, endBeat):
+        for beat, note in nearby_notes:
             context.current_beat = beat
-            n = Note(context.getCurrentChord()[0])
-            n.change_octave(-2)
+            if note: 
+                n = Note(note)
+            else:
+                n = None
             bar.place_notes(n, bar.meter[1])
             # next bar?
             if bar.is_full():
@@ -363,6 +403,9 @@ def getBPMX(meter):
     """ return the number of beats per measure given a meter""" 
     #TODO: handle compond meters
     return meter[0]
+
+#flip a coin
+def coin( p = 0.5 ): return random.random() > p
 
 # tick_metronome plays a short sound
 def tick_metronome():
@@ -440,7 +483,8 @@ def getToneStream(duration = -1, play_metronome=True):
         yield(tone)
 
 def outputComposition(composition, outFile=None):
-    if file:
+    _log.debug( "outputComposition: outFile: %s" , outFile) 
+    if outFile:
         write_Composition(outFile, composition)
     else:
         fluidsynth.play_Composition(composition)
@@ -553,7 +597,7 @@ if __name__ == '__main__':
         A.setTones(blueTones)
         context.addPart('A', A)
         context.appendArrangement('A', 'verse')
-        bassPlayer = ElementaryBassPlayer(context)
+        bassPlayer = WalkingBassPlayer(context)
         basePlayer = Player(context)
         bassTrk = bassPlayer.play(0, int(context.total_beats))
         baseTrk = basePlayer.play(0, int(context.total_beats))
