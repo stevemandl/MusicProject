@@ -1,4 +1,5 @@
 from mingus.containers import Note
+from mingus.core.notes import note_to_int
 
 #
 # Sieve class
@@ -33,6 +34,7 @@ class Sieve():
         ['C-2', 'F#-2', 'C-3', 'F#-3', 'C-4'] """
         if hasattr(notes, 'ascending'):
             notes = notes.ascending()
-        self._range = [Note(n) for n in note_range if Note(n).name in notes]
+        notes = [note_to_int(n) for n in notes]
+        self._range = [Note(n) for n in note_range if note_to_int(Note(n).name) in notes]
             
                 

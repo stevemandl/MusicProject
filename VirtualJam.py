@@ -170,7 +170,9 @@ class SongContext(object):
     
     def getCurrentChord(self):
         """returns the Chord from SongPart at the current_beat"""
-        return self.getCurrentPart().chordAt(self.current_beat - self.getCurrentSection()[2])
+        c = self.getCurrentPart().chordAt(self.current_beat - self.getCurrentSection()[2])
+        _log.debug('currentChord: %s', c)
+        return c
     
     def getCurrentNote(self):
         """returns the Note from SongPart at the current_beat"""
@@ -329,6 +331,7 @@ class WalkingBassPlayer(Player):
         while self._cx.current_beat < endBeat:
             if self._cx.getCurrentChord()[0] != last_chord[0] or self._cx.current_beat == endBeat-1:
                 chordSieve.overlay(bass_range, self._cx.getCurrentChord()[:1])
+                _log.debug("WalkingBass sieve range: %s", chordSieve._range )
                 dt = self._cx.current_beat - last_goal[0]
                 new_range = [n for n in bass_range if n >= (int(last_goal[1]) - dt * 5) and n < (int(last_goal[1]) + dt * 5 ) ]
                 new_goal = (self._cx.current_beat, chordSieve.attune(random.choice(new_range)))
@@ -623,20 +626,10 @@ if __name__ == '__main__':
         for c, l in ElanorChords:
             C._chords += l*[chords.from_shorthand(c)]
         C.setTones(ElanorTones)
-        B = SongPart(16, key='F', meter=(4,4))
-        #TODO: stitch the songs
-        source = interpret(A._chords[-1], A.key)
-        target = c._chords[0]
-        path_options = find_chord_paths(source, target, 5)[:3]
-        path_split = part_split(16, n)
-        #context.addPart('B', B)
-        #context.appendArrangement('B', 'bridge')
-
-        
         
         context.addPart('C', C)
         context.appendArrangement('C', 'verse')
-        bassPlayer = ElementaryBassPlayer(context)
+        bassPlayer = WalkingBassPlayer(context)
         basePlayer = Player(context)
         bassTrk = bassPlayer.play(0, int(context.total_beats))
         baseTrk = basePlayer.play(0, int(context.total_beats))
