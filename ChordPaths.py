@@ -80,9 +80,8 @@ default_scales = [
 
 def determineScale(notes, scale_types = default_scales):
     notes = set(notes)
-    for key in keys.keys:
-        
-        for scale in scale_types:
+    for scale in scale_types:
+        for key in keys.keys:
             if scale.type == 'major':
                 if (notes <= set(scale(key[0]).ascending()) or
                         notes <= set(scale(key[0]).descending())):

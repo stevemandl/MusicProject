@@ -114,6 +114,13 @@ class SongPart(object):
         v_notes = filter(lambda x: x.beatTime <= beat and x.getEndTime() > beat, self._tones)
         if v_notes:
             return v_notes[0].as_note()
+
+    def getNormalizedPhrase(self, fromTone=None, toTone=None):
+        """returns a slice of this part's tones as (beat, int) pairs, with the first beat normalized to 0"""
+        phrase = self._tones[fromTone, toTone]
+        bz = phrase[0].beatTime #beat zero
+        return [(t.beatTime-bz, t.midiNote) for t in phrase]
+    
 #
 # SongContext class
 #  
@@ -238,7 +245,8 @@ class Player():
     def _bib(self):
         """the context's beat in bar"""
         return self._cx.getBeatInBar()
-        
+    
+    
     def play(self, startBeat, endBeat):
         """ return a track from the given start to end
         this just plays the context's melody verbatim"""
@@ -316,8 +324,9 @@ class WalkingBassPlayer(Player):
         self._cx.current_beat = startBeat
         t = Track()
         bar = self._bar()
-        bass_range = range(16,43) 
+        bass_range = range(Note('E-2'),Note('C-5')) 
         chordSieve = Sieve(bass_range)
+        scaleSieve = Sieve(bass_range)
         walk_direction = 3
         if coin(): walk_direction = -3
         last_chord = self._cx.getCurrentChord()
@@ -325,7 +334,7 @@ class WalkingBassPlayer(Player):
         walk_note = chordSieve.attune(Note('D-2'))
         last_note = chordSieve.attune(Note('D-2'))
         last_goal = (startBeat, walk_note)
-        nearby_notes = [last_goal]
+        nearby_notes = []
         
         # add goal Notes at the start of each chord change
         while self._cx.current_beat < endBeat:
@@ -335,39 +344,41 @@ class WalkingBassPlayer(Player):
                 dt = self._cx.current_beat - last_goal[0]
                 new_range = [n for n in bass_range if n >= (int(last_goal[1]) - dt * 5) and n < (int(last_goal[1]) + dt * 5 ) ]
                 new_goal = (self._cx.current_beat, chordSieve.attune(random.choice(new_range)))
-                _log.debug("WalkingBass goal diff %d", int(new_goal[1]) - int(last_goal[1]) )
+                _log.debug("WalkingBass new goal: %s, goal diff %d", new_goal, int(new_goal[1]) - int(last_goal[1]) )
+                #set overlays for sieves  
+                scaleSieve.overlay(bass_range, determineScale(last_chord))
+                chordSieve.overlay(bass_range, last_chord)
                 for n in range(dt):
                     if n == 0: #first note when chord changed
                         nearby_notes.append(last_goal) #land on goal note when chord changes
                         walk_note = last_goal[1]
-                        continue
-                    # constrain wal direction so we don't get out of range or too far from goal
-                    if walk_direction >= 0 and (walk_note > 42 or coin(1. / (43 - int(walk_note)))):
-                        walk_direction = -2 
-                    if walk_direction <= 0 and (walk_note < 17 or coin(1. / (int(walk_note) - 16))):
-                        walk_direction = 2 
-                    if int(walk_note) - int(new_goal[1]) > (dt-n) * 4: walk_direction = -5
-                    if int(new_goal[1]) - int(walk_note) > (dt-n) * 4: walk_direction = 5
-                    #overlay a scale  
-                    chordSieve.overlay(bass_range, determineScale(last_chord))
-                    walk_note = int(walk_note) + walk_direction    
-                    walk_note = chordSieve.attune(walk_note, walk_direction > 0)
-                    if not n % 2: #even notes sieve with chord
-                        chordSieve.overlay(bass_range, last_chord)
-                        walk_note = chordSieve.attune(walk_note, walk_direction > 0)
-                    #TODO: add rhythm filter e.g. append only if beat_in_bar in rhythm_beats
-                    if last_note != walk_note:
-                        nearby_notes.append((last_goal[0] + n, walk_note))
                     else:
-                        nearby_notes.append((last_goal[0] + n, 0))
-                    last_note = walk_note
+                        # constrain walk direction so we don't get out of range or too far from goal
+                        if walk_direction >= 0 and (walk_note > 42 or coin(1. / (43 - int(walk_note)))):
+                            walk_direction = -2 
+                        if walk_direction <= 0 and (walk_note < 17 or coin(1. / (int(walk_note) - 16))):
+                            walk_direction = 2 
+                        if int(walk_note) - int(new_goal[1]) > (dt-n) * 4: walk_direction = -5
+                        if int(new_goal[1]) - int(walk_note) > (dt-n) * 4: walk_direction = 5
+                        walk_note = int(walk_note) + walk_direction    
+                        if n % 2: #even notes sieve with chord
+                            walk_note = scaleSieve.attune(walk_note, walk_direction > 0)
+                        else:
+                            walk_note = chordSieve.attune(walk_note, walk_direction > 0)
+                        #TODO: add rhythm filter e.g. append only if beat_in_bar in rhythm_beats
+                        if last_note != walk_note:
+                            nearby_notes.append((last_goal[0] + n, walk_note))
+                        else:
+                            nearby_notes.append((last_goal[0] + n, 0))
+                        last_note = walk_note
                 last_goal = new_goal
             last_chord = self._cx.getCurrentChord()
             self._cx.current_beat += 1
         
         #add notes
+        _log.debug("Bass notes: %s " % nearby_notes)
         for beat, note in nearby_notes:
-            context.current_beat = beat
+            self._cx.current_beat = beat
             if note: 
                 n = Note(note)
             else:
@@ -377,6 +388,115 @@ class WalkingBassPlayer(Player):
             if bar.is_full():
                 t.add_bar(bar)
                 bar = self._bar()
+        if bar.current_beat > 0.0001:
+            if not bar.is_full():
+                bar.place_rest(1.0 / (bar.length - bar.current_beat))
+            t.add_bar(bar)    
+        return t
+    
+#
+# BetterBassPlayer class
+#
+
+class BetterBassPlayer(Player):
+    def play(self, startBeat, endBeat):
+        self._cx.current_beat = startBeat
+        t = Track()
+        bar = self._bar()
+        bass_range = range(Note('E-2'),Note('C-5')) 
+        scaleSieve = Sieve(bass_range)
+        last_chord = self._cx.getCurrentChord()
+        last_goal = (startBeat, Note(last_chord[0]))
+        bass_notes = []
+        
+        # add goal Notes at the start of each chord change
+        while self._cx.current_beat < endBeat:
+            new_chord = self._cx.getCurrentChord()
+            if new_chord[0] != last_chord[0] or self._cx.getBeatInBar() == 0 or self._cx.current_beat == endBeat -1:
+                dt = self._cx.current_beat - last_goal[0]
+                if self._cx.current_beat == endBeat -1: #special case for the last bar
+                    dt += 1
+                    new_goal = last_goal
+                else:
+                    scaleSieve.overlay(bass_range, new_chord[:1])
+                    _log.debug("WalkingBass sieve range: %s", scaleSieve._range )
+                    new_range = [n for n in bass_range if n >= (int(last_goal[1]) - 12) and n < (int(last_goal[1]) + 12 ) ]
+                    new_goal = (self._cx.current_beat, scaleSieve.attune(random.choice(new_range)))
+                _log.debug("WalkingBass new goal: %s, goal diff %d", new_goal, int(new_goal[1]) - int(last_goal[1]) )
+                #set overlays for sieve
+                scaleSieve.overlay(bass_range, determineScale(last_chord))
+                two_note = None
+                four_note = None
+
+                for n in range(dt):
+                    if n == bar.meter[0]/2: # 3 equivalent
+                        if last_goal[1] == new_goal[1]:
+                            # play the 5
+                            scaleSieve.overlay(bass_range, [last_chord[2]])
+                            three_note = scaleSieve.attune(last_goal[1], coin())
+                        else:
+                            # 
+                            if last_goal[1] < new_goal[1]:
+                                three_note = scaleSieve.attune(int(new_goal[1]) - 1, False)
+                            else:
+                                three_note = scaleSieve.attune(int(new_goal[1]) + 1, True)
+                        # compute 2 and 4
+                        if bar.meter[0] >= bar.meter[1]:
+                            if last_goal[1] == three_note:
+                                # play the 5
+                                scaleSieve.overlay(bass_range, [last_chord[2]])
+                                two_note = scaleSieve.attune(last_goal[1], coin())
+                            else:
+                                scaleSieve.overlay(bass_range, determineScale(last_chord))
+                                if last_goal[1] < three_note:
+                                    two_note = scaleSieve.attune(int(three_note) - 1, False)
+                                else:
+                                    two_note = scaleSieve.attune(int(three_note) + 1, True)
+                                if coin(0.1):
+                                    if coin():
+                                        two_note = int(three_note) + 1
+                                    else:
+                                        two_note = int(three_note) - 1
+                            # four
+                            scaleSieve.overlay(bass_range, determineScale(last_chord))
+                            dn = int(new_goal[1]) - int(three_note)
+                            if (dn > 1 or dn < -1) and coin():
+                                if dn > 0:
+                                    four_note = int(new_goal[1]) - 1
+                                else:
+                                    four_note = int(new_goal[1]) + 1
+                                #slide or bracket
+                            else: # three_note and goal are 1/2 step away
+                                if coin():
+                                    # chromatic bracket
+                                    four_note = int(new_goal[1]) + (dn & -1)
+                                else:
+                                    four_note = scaleSieve.attune(int(new_goal[1]) + (dn & -1), dn > 0)
+                if dt: # first time through the loop, dt = 0
+                    bass_notes.append(last_goal[1])
+                    if two_note:
+                        bass_notes.append(two_note)
+                    bass_notes.append(three_note)
+                    if four_note:
+                        bass_notes.append(four_note)
+                    last_goal = new_goal
+            last_chord = new_chord
+            self._cx.current_beat += 1
+        
+        #add notes
+        _log.debug("Bass notes: %s " % bass_notes)
+        self._cx.current_beat = startBeat
+        for note in bass_notes:
+            if note: 
+                n = Note(note)
+            else:
+                n = None
+            bar.place_notes(n, bar.meter[1])
+            # next bar?
+            if bar.is_full():
+                t.add_bar(bar)
+                bar = self._bar()
+            self._cx.current_beat += 1
         if bar.current_beat > 0.0001:
             if not bar.is_full():
                 bar.place_rest(1.0 / (bar.length - bar.current_beat))
@@ -492,10 +612,15 @@ def outputComposition(composition, outFile=None):
     else:
         fluidsynth.play_Composition(composition)
         
-def makeBridges(bridge_length, bridge_meter, source_part, target_part):
+def makeBridges(bridge_length, bridge_meter, source_part, target_part, how_many=3, phrase_len=4):
+    """bridge_length is in beats, source and target parts are previous and subsequent parts
+       yields parts that function as bridges between the two bracketing parts
+       phrase_len determines how many of the last notes of the source part to combine 
+       with the first notes of the target part to incorporate into the intervening melody  
+    """
     source = interpret(source_part._chords[-1], source_part.key)
     target = interpret(target_part._chords[0], target_part.key, True)
-    path_options = find_chord_paths(source, target, 5)[:3]
+    path_options = find_chord_paths(source, target, 5)[:how_many]
     for path in path_options:
         path_split = part_split(bridge_length, len(path))
         bridge = SongPart(bridge_length, key=source_part.key, meter=source_part.meter)
@@ -504,6 +629,24 @@ def makeBridges(bridge_length, bridge_meter, source_part, target_part):
             bridge.setChords(chords.from_shorthand(path[i]), range(start_beat, start_beat + path_split[i]))
             start_beat += path_split[i]
         #TODO: add melody
+        source_phrase = source_part.getNormalizedPhrase(fromTone=-phrase_len)
+        target_phrase = target_part.getNormalizedPhrase(toTone=phrase_len)
+        syn_phrase = []
+        bridge_tones = []
+        start_beat = 0
+        current_beat = 0
+        current_duration = 1
+        while start_beat < bridge_length:
+            if not syn_phrase:
+                syn_phrase = interpolate(source_phrase, target_phrase, start_beat * 1.0 / bridge_length)
+                start_beat = current_beat
+            tone = syn_phrase.pop(0)
+            if syn_phrase: # if syn_phrase is empty, re-use the previous duration
+                current_duration = syn_phrase[0][0] - tone[0] 
+            current_beat = start_beat + tone[0]
+            bridge_tones.append(Tone(tone[1], current_beat, ))
+            
+        bridge.setTones(bridge_tones)
         yield bridge
         
 
@@ -595,19 +738,22 @@ if __name__ == '__main__':
                 (62, 44, 1), (67, 45, 1), (71, 46, 1), (74, 47, 1)]]
         k = context.key
         A = SongPart(48, key=k, meter=context.meter)
-        progression = ['I','IV7','I','I7','IV7','IV7','I','I','V7','IV7','I7','V7']
-        A.setBarProgresion(progression)
+        BluesChords= [('C7', 4), ('F7', 4), ('C7', 8), ('F7', 8), ('C7', 8), ('G7', 4), ('F7', 4),
+             ('C7', 4), ('G7', 4)]
+        A._chords = []
+        for c, l in BluesChords:
+            A._chords += l*[chords.from_shorthand(c)]
         A.setTones(blueTones)
         context.addPart('A', A)
         context.appendArrangement('A', 'verse')
-        bassPlayer = WalkingBassPlayer(context)
+        bassPlayer = BetterBassPlayer(context)
         basePlayer = Player(context)
         bassTrk = bassPlayer.play(0, int(context.total_beats))
         baseTrk = basePlayer.play(0, int(context.total_beats))
         #combine tracks
         comp = Composition()
-        comp.add_track(bassTrk)
         comp.add_track(baseTrk)
+        comp.add_track(bassTrk)
         outputComposition(comp, options.output)
 
     if options.beatles:
