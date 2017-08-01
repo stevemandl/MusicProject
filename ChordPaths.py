@@ -91,4 +91,20 @@ def determineScale(notes, scale_types = default_scales):
                 if (notes <= set(scale(keys.get_notes(key[1])[0]).ascending()) or
                         notes <= set(scale(keys.get_notes(key[1])[0]).descending())):
                     return scale(keys.get_notes(key[1])[0])
-    
+#
+# interpolate returns an array that equals partA when coeffiecient == 0
+# and partB whenr coefficient == 1 
+#
+def interpolate(partA, partB, coefficient):
+    if coefficient <= 0.0:
+        return partA
+    if coefficient >= 1.0:
+        return partB
+    #make arrays the same length
+    while len(partB) < len(partA):
+        partB.append(partB[-1])
+    while len(partB) > len(partA):
+        partA.append(partA[-1])
+    xcoefficient = 1.0 - coefficient
+    return [(partA[i][0] * xcoefficient + partB[i][0] * coefficient, 
+             partA[i][1] * xcoefficient + partB[i][1] * coefficient) for i in range(len(partA))]
