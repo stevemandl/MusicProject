@@ -72,38 +72,39 @@ def part_split(size, n):
     if n == 1: return [size]
     if ch == size: ch = ch / 2
     return part_split(ch, cn) + part_split(size-ch, n-cn)
+
 #the default scale types to consider when determining scales
 default_scales = [
     scales.Major, scales.NaturalMinor, scales.MelodicMinor, 
     scales.HarmonicMajor, scales.HarmonicMinor, scales.WholeTone, 
     scales.Octatonic, scales.Chromatic]
 
-def determineScale(notes, scale_types = default_scales):
-    notes = set(notes)
+def determineScale(m_notes, scale_types = default_scales):
+    note_set = set([notes.note_to_int(n) for n in m_notes])
     for scale in scale_types:
         for key in keys.keys:
             if scale.type == 'major':
-                if (notes <= set(scale(key[0]).ascending()) or
-                        notes <= set(scale(key[0]).descending())):
+                if (note_set <= set([notes.note_to_int(n) for n in scale(key[0]).ascending()])):
                     return scale(key[0])
             elif scale.type == 'minor':
-                if (notes <= set(scale(keys.get_notes(key[1])[0]).ascending()) or
-                        notes <= set(scale(keys.get_notes(key[1])[0]).descending())):
+                if (note_set <= set([notes.note_to_int(n) for n in scale(keys.get_notes(key[1])[0]).ascending()])):
                     return scale(keys.get_notes(key[1])[0])
 #
 # interpolate returns an array that equals partA when coeffiecient == 0
 # and partB whenr coefficient == 1 
 #
 def interpolate(partA, partB, coefficient):
+    p_a = partA[:]
+    p_b = partB[:]
     if coefficient <= 0.0:
-        return partA
+        return p_a
     if coefficient >= 1.0:
-        return partB
+        return p_b
     #make arrays the same length
-    while len(partB) < len(partA):
-        partB.append(partB[-1])
-    while len(partB) > len(partA):
-        partA.append(partA[-1])
+    while len(p_b) < len(p_b):
+        p_b.append(p_b[-1])
+    while len(p_b) > len(p_b):
+        p_a.append(p_a[-1])
     xcoefficient = 1.0 - coefficient
-    return [(partA[i][0] * xcoefficient + partB[i][0] * coefficient, 
-             partA[i][1] * xcoefficient + partB[i][1] * coefficient) for i in range(len(partA))]
+    return [(p_a[i][0] * xcoefficient + p_b[i][0] * coefficient, 
+             p_a[i][1] * xcoefficient + p_b[i][1] * coefficient) for i in range(len(p_a))]

@@ -117,7 +117,8 @@ class SongPart(object):
 
     def getNormalizedPhrase(self, fromTone=None, toTone=None):
         """returns a slice of this part's tones as (beat, int) pairs, with the first beat normalized to 0"""
-        phrase = self._tones[fromTone, toTone]
+        _log.debug("getNormalized from: %d to: %d", fromTone, toTone)
+        phrase = self._tones[fromTone: toTone]
         bz = phrase[0].beatTime #beat zero
         return [(t.beatTime-bz, t.midiNote) for t in phrase]
     
@@ -424,7 +425,9 @@ class BetterBassPlayer(Player):
                     new_goal = (self._cx.current_beat, scaleSieve.attune(random.choice(new_range)))
                 _log.debug("WalkingBass new goal: %s, goal diff %d", new_goal, int(new_goal[1]) - int(last_goal[1]) )
                 #set overlays for sieve
-                scaleSieve.overlay(bass_range, determineScale(last_chord))
+                last_scale = determineScale(last_chord)
+                _log.debug("last_scale: %s" , last_scale)
+                scaleSieve.overlay(bass_range, last_scale)
                 two_note = None
                 four_note = None
 
@@ -447,31 +450,31 @@ class BetterBassPlayer(Player):
                                 scaleSieve.overlay(bass_range, [last_chord[2]])
                                 two_note = scaleSieve.attune(last_goal[1], coin())
                             else:
-                                scaleSieve.overlay(bass_range, determineScale(last_chord))
+                                scaleSieve.overlay(bass_range, last_scale)
                                 if last_goal[1] < three_note:
                                     two_note = scaleSieve.attune(int(three_note) - 1, False)
                                 else:
                                     two_note = scaleSieve.attune(int(three_note) + 1, True)
-                                if coin(0.1):
+                                if coin(0.9):
                                     if coin():
                                         two_note = int(three_note) + 1
                                     else:
                                         two_note = int(three_note) - 1
                             # four
-                            scaleSieve.overlay(bass_range, determineScale(last_chord))
+                            scaleSieve.overlay(bass_range, last_scale)
                             dn = int(new_goal[1]) - int(three_note)
-                            if (dn > 1 or dn < -1) and coin():
+                            if (dn > 1 or dn < -1) and coin(.7):
                                 if dn > 0:
                                     four_note = int(new_goal[1]) - 1
                                 else:
                                     four_note = int(new_goal[1]) + 1
                                 #slide or bracket
                             else: # three_note and goal are 1/2 step away
-                                if coin():
+                                if coin(.8):
                                     # chromatic bracket
-                                    four_note = int(new_goal[1]) + (dn & -1)
+                                    four_note = int(new_goal[1]) + (dn / abs(dn))
                                 else:
-                                    four_note = scaleSieve.attune(int(new_goal[1]) + (dn & -1), dn > 0)
+                                    four_note = scaleSieve.attune(int(new_goal[1]) + (dn / abs(dn)), dn > 0)
                 if dt: # first time through the loop, dt = 0
                     bass_notes.append(last_goal[1])
                     if two_note:
@@ -485,12 +488,15 @@ class BetterBassPlayer(Player):
         
         #add notes
         _log.debug("Bass notes: %s " % bass_notes)
-        self._cx.current_beat = startBeat
-        for note in bass_notes:
-            if note: 
-                n = Note(note)
-            else:
+        for self._cx.current_beat in range(endBeat):
+            if self._cx.current_beat < startBeat:
                 n = None
+            else:
+                note = bass_notes.pop(0)
+                if note: 
+                    n = Note(note)
+                else:
+                    n = None
             bar.place_notes(n, bar.meter[1])
             # next bar?
             if bar.is_full():
@@ -620,7 +626,9 @@ def makeBridges(bridge_length, bridge_meter, source_part, target_part, how_many=
     """
     source = interpret(source_part._chords[-1], source_part.key)
     target = interpret(target_part._chords[0], target_part.key, True)
-    path_options = find_chord_paths(source, target, 5)[:how_many]
+    path_options = find_chord_paths(source, target, 5)[2:how_many+2]
+    bridge_range = range(Note('C-3'),Note('C-8')) 
+    scaleSieve = Sieve(bridge_range)
     for path in path_options:
         path_split = part_split(bridge_length, len(path))
         bridge = SongPart(bridge_length, key=source_part.key, meter=source_part.meter)
@@ -628,9 +636,11 @@ def makeBridges(bridge_length, bridge_meter, source_part, target_part, how_many=
         for i in range(len(path)):
             bridge.setChords(chords.from_shorthand(path[i]), range(start_beat, start_beat + path_split[i]))
             start_beat += path_split[i]
+        _log.debug("bridge chords: %s" , bridge._chords)
         #TODO: add melody
         source_phrase = source_part.getNormalizedPhrase(fromTone=-phrase_len)
         target_phrase = target_part.getNormalizedPhrase(toTone=phrase_len)
+        _log.debug("source_phrase: %s target: %s", source_phrase, target_phrase)
         syn_phrase = []
         bridge_tones = []
         start_beat = 0
@@ -638,15 +648,24 @@ def makeBridges(bridge_length, bridge_meter, source_part, target_part, how_many=
         current_duration = 1
         while start_beat < bridge_length:
             if not syn_phrase:
+                _log.debug("making new syn_phrase")
                 syn_phrase = interpolate(source_phrase, target_phrase, start_beat * 1.0 / bridge_length)
                 start_beat = current_beat
+            _log.debug("syn_phrase: %s", syn_phrase)
             tone = syn_phrase.pop(0)
+            tone = (quantize(tone[0]), tone[1])
             if syn_phrase: # if syn_phrase is empty, re-use the previous duration
-                current_duration = syn_phrase[0][0] - tone[0] 
+                current_duration = quantize(syn_phrase[0][0]) - tone[0] 
             current_beat = start_beat + tone[0]
-            bridge_tones.append(Tone(tone[1], current_beat, ))
-            
+            if current_beat + current_duration < bridge_length:
+                scaleSieve.overlay(bridge_range, determineScale(bridge._chords[int(current_beat)]))
+                sieve_tone = scaleSieve.attune(int(tone[1]))
+                bridge_tones.append(Tone(sieve_tone, current_beat, current_duration))
+        n_length = max([t.getEndTime() for t in bridge_tones])
+        if n_length < bridge_length:
+            bridge_tones.append(Tone(0, n_length, bridge_length- n_length))
         bridge.setTones(bridge_tones)
+        _log.debug("bridge tones: %s" , bridge_tones)
         yield bridge
         
 
@@ -773,16 +792,21 @@ if __name__ == '__main__':
             C._chords += l*[chords.from_shorthand(c)]
         C.setTones(ElanorTones)
         
+        for B in makeBridges(32, A.meter, A, C, 1, 8):
+            context.addPart('B', B)
+            context.appendArrangement('B', 'bridge')
+        
         context.addPart('C', C)
         context.appendArrangement('C', 'verse')
-        bassPlayer = WalkingBassPlayer(context)
+        _log.debug("arrangement: %s", context.arrangement)
+        bassPlayer = BetterBassPlayer(context)
         basePlayer = Player(context)
-        bassTrk = bassPlayer.play(0, int(context.total_beats))
+        bassTrk = bassPlayer.play(4, int(context.total_beats))
         baseTrk = basePlayer.play(0, int(context.total_beats))
         #combine tracks
         comp = Composition()
-        comp.add_track(bassTrk)
         comp.add_track(baseTrk)
+        comp.add_track(bassTrk)
         outputComposition(comp, options.output)
         
     stream.stop_stream()
