@@ -6,6 +6,7 @@ https://github.com/anzev/mingus/archive/master.zip
 
 """
 from Beatles import *
+from standards import *
 from ChordPaths import *
 from Sieve import Sieve
 import logging
@@ -420,19 +421,20 @@ class BetterBassPlayer(Player):
                     new_goal = last_goal
                 else:
                     scaleSieve.overlay(bass_range, new_chord[:1])
-                    _log.debug("WalkingBass sieve range: %s", scaleSieve._range )
+                    _log.debug("BetterBass sieve range: %s", scaleSieve._range )
                     new_range = [n for n in bass_range if n >= (int(last_goal[1]) - 12) and n < (int(last_goal[1]) + 12 ) ]
                     new_goal = (self._cx.current_beat, scaleSieve.attune(random.choice(new_range)))
-                _log.debug("WalkingBass new goal: %s, goal diff %d", new_goal, int(new_goal[1]) - int(last_goal[1]) )
+                _log.debug("BetterBass new goal: %s, goal diff %d", new_goal, int(new_goal[1]) - int(last_goal[1]) )
                 #set overlays for sieve
                 last_scale = determineScale(last_chord)
                 _log.debug("last_scale: %s" , last_scale)
                 scaleSieve.overlay(bass_range, last_scale)
                 two_note = None
                 four_note = None
+                three_note = None
 
                 for n in range(dt):
-                    if n == bar.meter[0]/2: # 3 equivalent
+                    if n == dt/2: # 3 equivalent
                         if last_goal[1] == new_goal[1]:
                             # play the 5
                             scaleSieve.overlay(bass_range, [last_chord[2]])
@@ -479,7 +481,8 @@ class BetterBassPlayer(Player):
                     bass_notes.append(last_goal[1])
                     if two_note:
                         bass_notes.append(two_note)
-                    bass_notes.append(three_note)
+                    if three_note:
+                        bass_notes.append(three_note)
                     if four_note:
                         bass_notes.append(four_note)
                     last_goal = new_goal
@@ -626,7 +629,7 @@ def makeBridges(bridge_length, bridge_meter, source_part, target_part, how_many=
     """
     source = interpret(source_part._chords[-1], source_part.key)
     target = interpret(target_part._chords[0], target_part.key, True)
-    path_options = find_chord_paths(source, target, 5)[2:how_many+2]
+    path_options = find_chord_paths(source, target, 5)[:how_many]
     bridge_range = range(Note('C-3'),Note('C-8')) 
     scaleSieve = Sieve(bridge_range)
     for path in path_options:
@@ -666,6 +669,7 @@ def makeBridges(bridge_length, bridge_meter, source_part, target_part, how_many=
             bridge_tones.append(Tone(0, n_length, bridge_length- n_length))
         bridge.setTones(bridge_tones)
         _log.debug("bridge tones: %s" , bridge_tones)
+        _log.debug("bridge chords processed: %s", bridge._chords);
         yield bridge
         
 
@@ -686,6 +690,8 @@ if __name__ == '__main__':
                         help='Play some blues. (default: %(default)s)')
     parser.add_argument('--beatles','-a', action='store_true', default=False,
                         help='Beatles medley. (default: %(default)s)')
+    parser.add_argument('--standards','-p', action='store_true', default=False,
+                        help='Standards medley. (default: %(default)s)')
     parser.add_argument('--output', default=None,
                         help='Output file for results. (default: %(default)s)')
     parser.add_argument('--debug', action='store_true')
@@ -802,6 +808,40 @@ if __name__ == '__main__':
         bassPlayer = BetterBassPlayer(context)
         basePlayer = Player(context)
         bassTrk = bassPlayer.play(4, int(context.total_beats))
+        baseTrk = basePlayer.play(0, int(context.total_beats))
+        #combine tracks
+        comp = Composition()
+        comp.add_track(baseTrk)
+        comp.add_track(bassTrk)
+        outputComposition(comp, options.output)
+        
+    if options.standards:
+        SkylarkTones = [ Tone(*x) for x in SkylarkNotes]
+        ValentineTones = [ Tone(*x) for x in ValentineNotes]
+        A = SongPart(16, key='F', meter=(4,4))
+        A._chords = []
+        for c, l in ValentineChords:
+            A._chords += l*[chords.from_shorthand(c)]
+        A.setTones(ValentineTones)
+        _log.info( A._track.bars)
+        context.addPart('A', A)
+        context.appendArrangement('A', 'verse')
+        C = SongPart(12, key='D', meter=(4,4))
+        C._chords = []
+        for c, l in SkylarkChords:
+            C._chords += l*[chords.from_shorthand(c)]
+        C.setTones(SkylarkTones)
+        
+        for B in makeBridges(16, A.meter, A, C, 1, 4):
+            context.addPart('B', B)
+            context.appendArrangement('B', 'bridge')
+        
+        context.addPart('C', C)
+        context.appendArrangement('C', 'verse')
+        _log.debug("arrangement: %s", context.arrangement)
+        bassPlayer = BetterBassPlayer(context)
+        basePlayer = Player(context)
+        bassTrk = bassPlayer.play(0, int(context.total_beats))
         baseTrk = basePlayer.play(0, int(context.total_beats))
         #combine tracks
         comp = Composition()
